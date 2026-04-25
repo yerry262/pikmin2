@@ -237,6 +237,14 @@ Go to Dolphin → **Controllers** → set Port 1 to your gamepad or GameCube ada
 
 Open Dolphin and double-click Pikmin 2 in the game list. Start a story mode save file, land in any area, then hold **L + R** and press **Z** to open the mod menu.
 
+**Alternative — open boot.bin directly:** If Pikmin 2 doesn't show up in the Dolphin game list (or you skipped Step 8), you can launch the game by opening the boot file directly. In Dolphin, go to **File → Open…** and select:
+
+```
+pikmin2/orig/GPVE01/sys/boot.bin
+```
+
+Dolphin will boot the modded DOL straight from that file — same result as double-clicking the game list entry.
+
 ---
 
 ## Editing the Mod Menu

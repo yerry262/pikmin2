@@ -521,6 +521,87 @@ static void drawBtnIcon(Graphics& gfx, f32 x, f32 y, f32 size, int btnId)
     GXPosition3f32(right, bottom, zero); GXColor4u8(205,205,205,255); GXTexCoord2u8(16, 16);
 }
 
+// Solid-color quad helper. Caller must have already set up the flat-color TEV
+// pipeline below (drawCheckerBox does this once before issuing many quads).
+static void drawFlatQuad(f32 x, f32 y, f32 w, f32 h, u8 r, u8 g, u8 b, u8 a)
+{
+    GXBegin(GX_QUADS, GX_VTXFMT0, 4);
+    GXPosition3f32(x,     y + h, 0.0f); GXColor4u8(r, g, b, a);
+    GXPosition3f32(x,     y,     0.0f); GXColor4u8(r, g, b, a);
+    GXPosition3f32(x + w, y,     0.0f); GXColor4u8(r, g, b, a);
+    GXPosition3f32(x + w, y + h, 0.0f); GXColor4u8(r, g, b, a);
+}
+
+// Green checker-pattern panel behind the mod menu. Evokes the in-game story
+// message window (cave entrance, first treasure, first bestiary entry).
+// Three layers: outer border, dark forest-green base, lighter checker tiles.
+static void drawCheckerBox(Graphics& gfx, f32 x, f32 y, f32 w, f32 h)
+{
+    gfx.mOrthoGraph.setPort();
+
+    // Vertex-color-only TEV pipeline (no texture, no lighting).
+    GXSetNumChans(1);
+    GXSetNumTevStages(1);
+    GXSetNumTexGens(0);
+    GXSetTevOrder(GX_TEVSTAGE0, GX_TEXCOORD_NULL, GX_TEXMAP_NULL, GX_COLOR0A0);
+    GXSetChanCtrl(GX_COLOR0A0, GX_FALSE, GX_SRC_REG, GX_SRC_VTX, 0, GX_DF_NONE, GX_AF_NONE);
+    GXSetTevColorIn(GX_TEVSTAGE0, GX_CC_ZERO, GX_CC_ZERO, GX_CC_ZERO, GX_CC_RASC);
+    GXSetTevAlphaIn(GX_TEVSTAGE0, GX_CA_ZERO, GX_CA_ZERO, GX_CA_ZERO, GX_CA_RASA);
+    GXSetTevColorOp(GX_TEVSTAGE0, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_TRUE, GX_TEVPREV);
+    GXSetTevAlphaOp(GX_TEVSTAGE0, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_TRUE, GX_TEVPREV);
+    GXSetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_SET);
+    GXSetVtxAttrFmt(GX_VTXFMT0, GX_VA_POS, GX_POS_XYZ, GX_F32, 0);
+    GXSetVtxAttrFmt(GX_VTXFMT0, GX_VA_CLR0, GX_POS_XYZ, GX_RGBA8, 0);
+    GXClearVtxDesc();
+    GXSetVtxDesc(GX_VA_POS, GX_DIRECT);
+    GXSetVtxDesc(GX_VA_CLR0, GX_DIRECT);
+
+    // Layer 1: outer border (bright forest green, like the in-game message frame).
+    drawFlatQuad(x - 4.0f, y - 4.0f, w + 8.0f, h + 8.0f, 60, 170, 65, 240);
+    // Layer 2: very dark teal-green base, near-opaque.
+    drawFlatQuad(x, y, w, h, 14, 38, 26, 232);
+
+    // Layer 3: scrolling scan-bands — three parallax layers moving in opposite
+    // directions, like the file-select bottom bar's animated UV-scroll texture.
+    // Each draw() call increments the phase, so this animates frame-by-frame.
+    static u32 sBgPhase = 0;
+    sBgPhase++;
+
+    // Layer 3a: thick slow bands scrolling DOWN (cycle 24 px, advance 1 px / 4 frames).
+    {
+        const f32 cycle = 24.0f;
+        f32 off = (f32)((sBgPhase / 4) % (u32)cycle);
+        for (f32 yy = y - cycle + off; yy < y + h; yy += cycle) {
+            f32 by = yy, bh = 4.0f;
+            if (by < y) { bh -= (y - by); by = y; }
+            if (by + bh > y + h) bh = (y + h) - by;
+            if (bh > 0.0f) drawFlatQuad(x, by, w, bh, 80, 180, 90, 50);
+        }
+    }
+    // Layer 3b: thin fast bands scrolling UP (cycle 14 px, advance 1 px / 2 frames).
+    {
+        const f32 cycle = 14.0f;
+        f32 off = (f32)((sBgPhase / 2) % (u32)cycle);
+        for (f32 yy = y + h - off; yy > y - cycle; yy -= cycle) {
+            f32 by = yy, bh = 1.5f;
+            if (by < y) { bh -= (y - by); by = y; }
+            if (by + bh > y + h) bh = (y + h) - by;
+            if (bh > 0.0f) drawFlatQuad(x, by, w, bh, 130, 220, 140, 35);
+        }
+    }
+    // Layer 3c: bright sweeping highlight band — single wide bar that travels
+    // top-to-bottom across the panel and wraps. Gives the "active screen" feel.
+    {
+        const f32 cycle = h + 60.0f;
+        f32 off = (f32)((sBgPhase / 1) % (u32)cycle);
+        f32 by = y - 30.0f + off;
+        f32 bh = 18.0f;
+        if (by < y) { bh -= (y - by); by = y; }
+        if (by + bh > y + h) bh = (y + h) - by;
+        if (bh > 0.0f) drawFlatQuad(x, by, w, bh, 100, 200, 120, 25);
+    }
+}
+
 // Format a float without trailing zeros: 100.00->"100", 0.50->"0.5", 1.20->"1.2"
 static const char* fmtFloat(char* buf, f32 v)
 {
@@ -558,8 +639,34 @@ void ModMenu::draw(Graphics& gfx)
 	print.setGradColor(JUtility::TColor(180, 220, 255, 255));
 
 	const f32 x    = 120.0f;
-	f32       y    = 20.0f;
+	f32       y    = 26.0f; // a bit lower than before to give the big title headroom
 	const f32 dy   = 18.0f;
+	const f32 titleGap = dy * 2.0f; // extra room because the title is rendered larger
+
+	// Default font metrics + 1.5x size for the title line.
+	const f32 baseFontW = JFWSystem::systemFont->getWidth();
+	const f32 baseFontH = JFWSystem::systemFont->getHeight();
+	const f32 bigFontW  = baseFontW * 1.5f;
+	const f32 bigFontH  = baseFontH * 1.5f;
+
+	// Measure widths so we can position the bottom controls row.
+	const f32 iconSize   = 16.0f;
+	const f32 sepW       = print.getWidth("+");
+	const f32 closeW     = print.getWidth(" close, ");
+	const f32 selectW    = print.getWidth(" select");
+	const f32 rowMeasW   = print.getWidth("  Pikmin follow spd     999.00");
+
+	// Bottom controls row: [L]+[R]+[Z] close, [A] select  (left-aligned at x).
+	const f32 lx = x;
+	const f32 rx = lx + iconSize + sepW;
+	const f32 zx = rx + iconSize + sepW;
+	const f32 ax = zx + iconSize + closeW;
+	const f32 controlsRowW = (ax + iconSize + selectW) - x;
+
+	// Big title width (measured at the larger font size).
+	print.setFontSize(bigFontW, bigFontH);
+	const f32 titleW = print.getWidth("MOD MENU");
+	print.setFontSize(baseFontW, baseFontH);
 
 	// Cursor-window scroll: show up to kVisibleRows rows, centered on cursor.
 	int first = mCursor - (kVisibleRows / 2);
@@ -570,44 +677,66 @@ void ModMenu::draw(Graphics& gfx)
 		first = last - kVisibleRows;
 		if (first < 0) first = 0;
 	}
+	int firstActionIdx = -1;
+	for (int j = 0; j < mSliderCount; ++j) {
+		if (mSliders[j].mKind == kModSlider_Action) { firstActionIdx = j; break; }
+	}
+	int contentRows = (last - first) + 2; // sliders + footer + controls row
+	if (first == 0 && mSliderCount > 0) contentRows++; // "Main Variable Mods" header
+	if (firstActionIdx >= 0 && first <= firstActionIdx && firstActionIdx < last) contentRows++;
 
-	// Measure widths so we can position button icons exactly between the text segments.
-	const f32 iconSize   = 16.0f;
-	const f32 prefixW    = print.getWidth("MOD MENU == ");
-	const f32 sepW       = print.getWidth("+");
-	const f32 closeW     = print.getWidth(" close, ");
+	// Background box: fits the widest of (title, sliders, controls row).
+	f32 maxRowW = rowMeasW;
+	if (titleW        > maxRowW) maxRowW = titleW;
+	if (controlsRowW  > maxRowW) maxRowW = controlsRowW;
+	const f32 padX     = 12.0f;
+	const f32 padTop   = 24.0f; // big title ascender + a bit
+	const f32 padBot   = 10.0f;
+	const f32 boxLeft   = x - padX;
+	const f32 boxTop    = y - padTop;
+	const f32 boxWidth  = maxRowW + padX * 2.0f;
+	const f32 boxHeight = padTop + titleGap + (contentRows * dy) + padBot;
+	drawCheckerBox(gfx, boxLeft, boxTop, boxWidth, boxHeight);
 
-	// Icon x positions: prefix | [L] sep [R] sep [Z] close, [A] select
-	const f32 lx = x + prefixW;
-	const f32 rx = lx + iconSize + sepW;
-	const f32 zx = rx + iconSize + sepW;
-	const f32 ax = zx + iconSize + closeW;
-
-	// Icons drawn at y - 15 to align with J2DPrint's baseline-origin text.
-	const f32 iconY = y - 15.0f;
-	drawBtnIcon(gfx, lx, iconY, iconSize, 6); // L
-	drawBtnIcon(gfx, rx, iconY, iconSize, 7); // R
-	drawBtnIcon(gfx, zx, iconY, iconSize, 5); // Z
-	drawBtnIcon(gfx, ax, iconY, iconSize, 0); // A
-
-	// Restore J2DPrint GX state after the icon draws changed it.
+	// Restore J2DPrint GX state after the box draws changed it.
 	print.initiate();
 	print.setCharColor(JUtility::TColor(255, 255, 255, 255));
 	print.setGradColor(JUtility::TColor(180, 220, 255, 255));
 
-	// Draw text segments around the icons.
+	// === Title row: just "MOD MENU" centered horizontally, in larger font. ===
+	print.setFontSize(bigFontW, bigFontH);
+	f32 titleX = x + (rowMeasW - titleW) * 0.5f;
 	print.setCharColor(JUtility::TColor(255, 40, 40, 255));
-	print.print(x,              y, "MOD MENU == ");
-	print.print(lx + iconSize,  y, "+");
-	print.print(rx + iconSize,  y, "+");
-	print.print(zx + iconSize,  y, " close, ");
-	print.print(ax + iconSize,  y, " select");
+	print.print(titleX, y, "MOD MENU");
+	print.setFontSize(baseFontW, baseFontH);
 	print.setCharColor(JUtility::TColor(255, 255, 255, 255));
 
-	y += dy * 1.5f;
+	y += titleGap;
+
+	// Section header support: "Main Variable Mods" above the first slider,
+	// "Toggle Mods" above the first action slider. Centered horizontally on a
+	// representative row width.
+	const f32 rowContentW = rowMeasW;
+	const JUtility::TColor headerCol(255, 220, 100, 255);
 
 	for (int i = first; i < last; ++i) {
 		const ModSlider& s = mSliders[i];
+
+		if (i == 0) {
+			const char* h = "Main Variable Mods";
+			f32 hx = x + (rowContentW - print.getWidth(h)) * 0.5f;
+			print.setCharColor(headerCol);
+			print.print(hx, y, h);
+			y += dy;
+		}
+		if (i == firstActionIdx) {
+			const char* h = "Toggle Mods";
+			f32 hx = x + (rowContentW - print.getWidth(h)) * 0.5f;
+			print.setCharColor(headerCol);
+			print.print(hx, y, h);
+			y += dy;
+		}
+
 		const char* marker = (i == mCursor) ? "> " : "  ";
 		bool isApplied = (s.mKind == kModSlider_Float || s.mKind == kModSlider_Int)
 		                 && s.mTarget && s.mDirty;
@@ -624,7 +753,7 @@ void ModMenu::draw(Graphics& gfx)
 		} else if (s.mKind == kModSlider_Action) {
 			labelCol = s.mGreenLabel ? JUtility::TColor(80, 220, 80, 255)
 			                         : (s.mEnabled ? JUtility::TColor(80, 220, 80, 255)
-			                                       : JUtility::TColor(220, 60, 60, 255));
+			                                       : JUtility::TColor(255, 255, 255, 255));
 			valueCol = s.mEnabled ? JUtility::TColor(80, 220, 80, 255)
 			                      : JUtility::TColor(255, 255, 255, 255);
 		} else if (isApplied) {
@@ -667,6 +796,24 @@ void ModMenu::draw(Graphics& gfx)
 	// Fixed footer: always below the last visible row, never scrolls.
 	print.setCharColor(JUtility::TColor(80, 160, 255, 255));
 	print.print(x, y, "(%d/%d)", mCursor + 1, mSliderCount);
+	y += dy;
+
+	// === Bottom controls row: [L]+[R]+[Z] close, [A] select ===
+	const f32 ctrlIconY = y - 15.0f;
+	drawBtnIcon(gfx, lx, ctrlIconY, iconSize, 6); // L
+	drawBtnIcon(gfx, rx, ctrlIconY, iconSize, 7); // R
+	drawBtnIcon(gfx, zx, ctrlIconY, iconSize, 5); // Z
+	drawBtnIcon(gfx, ax, ctrlIconY, iconSize, 0); // A
+
+	// Restore J2DPrint state after the icon draws changed it.
+	print.initiate();
+	print.setCharColor(JUtility::TColor(255, 255, 255, 255));
+	print.setGradColor(JUtility::TColor(180, 220, 255, 255));
+
+	print.print(lx + iconSize, y, "+");
+	print.print(rx + iconSize, y, "+");
+	print.print(zx + iconSize, y, " close, ");
+	print.print(ax + iconSize, y, " select");
 }
 
 // ---------- Actions ----------
