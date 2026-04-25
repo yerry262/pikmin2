@@ -730,7 +730,12 @@ static void action_unlockAllLandingSpots()
 		Game::playData->setStoryFlag(Game::STORY_DebtPaid);
 	}
 
-	OSReport("[MOD] all 4 landing spots unlocked\n");
+	// Jerry's World (course 4, mod-added).
+	if (!Game::playData->courseOpen(4)) {
+		Game::playData->openCourse(4);
+	}
+
+	OSReport("[MOD] all 5 landing spots unlocked\n");
 }
 
 static void action_addPokos()

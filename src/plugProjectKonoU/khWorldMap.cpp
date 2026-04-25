@@ -13,6 +13,7 @@
 #include "PSSystem/PSSystemIF.h"
 #include "efx2d/T2DChangesmoke.h"
 #include "Controller.h"
+#include "moddingU/worldMapOverlay.h"
 
 static void _Print(char* format, ...)
 {
@@ -580,10 +581,11 @@ void WorldMap::update(Game::WorldMap::UpdateArg& arg)
 	mLight01Center = Vector2f(getPaneCenterX(mScreenKitagawa->search('light01')), getPaneCenterY(mScreenKitagawa->search('light01')));
 	mStarCenter    = Vector2f(getPaneCenterX(mScreenKitagawa->search('star')), getPaneCenterY(mScreenKitagawa->search('star')));
 
-	u64 tagsWait[4]     = { 'Nwait0', 'Nwait1', 'Nwait2', 'Nwait3' };
-	u64 tagsPoint[4]    = { 'Npoint0', 'Npoint1', 'Npoint2', 'Npoint3' };
+	u64 tagsWait[5]     = { 'Nwait0', 'Nwait1', 'Nwait2', 'Nwait3', 'Nwait3' };
+	u64 tagsPoint[5]    = { 'Npoint0', 'Npoint1', 'Npoint2', 'Npoint3', 'Npoint3' };
 	J2DPane* cWaitPane  = mScreenKitagawa->search(tagsWait[mCurrentCourseIndex]);
 	J2DPane* cPointPane = mScreenKitagawa->search(tagsPoint[mCurrentCourseIndex]);
+	moddingU::worldMapOverlay::maybeReroutePanes(this, cWaitPane, cPointPane);
 	J2DPane* paneRocket = mScreenRocket->search('NROCKET');
 	mRocketPosition2    = mRocketPosition;
 
@@ -1108,6 +1110,7 @@ void WorldMap::draw4th(Graphics& gfx)
 		gfx.mOrthoGraph.fillBox(JGeometry::TBox2f(0.0f, 0.0f, zero + x, zero + y));
 	}
 	::Screen::gGame2DMgr->draw(gfx);
+	moddingU::worldMapOverlay::draw(this, gfx);
 }
 
 /**
@@ -1420,6 +1423,13 @@ bool WorldMap::newMapOpen()
  */
 int WorldMap::getTarget()
 {
+	// Let the Jerry's World overlay handle nav if cursor is on Wistful (pressing
+	// right) or already on Jerry. Return value -2 means "let native code handle it".
+	int jerryResult = moddingU::worldMapOverlay::maybeHandleNavigation(this);
+	if (jerryResult != -2) {
+		return jerryResult;
+	}
+
 	int newMap = COURSE_NULL;
 	switch (mCurrentCourseIndex) {
 	case COURSE_Tutorial: // currently selected valley of repose

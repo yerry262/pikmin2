@@ -34,6 +34,7 @@
 #include "PikiAI.h"
 #include "nans.h"
 #include "moddingU/modMenu.h"
+#include "moddingU/jerryWorldBootstrap.h"
 
 namespace og {
 namespace Screen {
@@ -358,6 +359,7 @@ bool BaseGameSection::doUpdate()
 		shadowMgr->init();
 	}
 	moddingU::onBaseGameUpdate(mControllerP1);
+	moddingU::jerryWorldBootstrap::onUpdate();
 	gameSystem->endFrame();
 	return mIsMainActive;
 }

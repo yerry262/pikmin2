@@ -2092,6 +2092,8 @@ config.libs = [
         "host": True,
         "objects": [
             Object(Equivalent, "moddingU/modMenu.cpp"),
+            Object(Equivalent, "moddingU/jerryWorldBootstrap.cpp"),
+            Object(Equivalent, "moddingU/worldMapOverlay.cpp"),
         ],
     },
 ]
@@ -2109,6 +2111,8 @@ def link_order_callback(module_id: int, objects: List[str]) -> List[str]:
     if module_id == 0:  # DOL
         return objects + [
             "moddingU/modMenu.cpp",
+            "moddingU/jerryWorldBootstrap.cpp",
+            "moddingU/worldMapOverlay.cpp",
         ]
     return objects
 

@@ -73,6 +73,10 @@ void SelectState::initNext(SingleGameSection* section)
 	if (playData->courseOpen(2) && (playData->isStoryFlag(STORY_DebtPaid)) && !playData->courseOpen(3)) {
 		playData->openCourse(3);
 	}
+	// Jerry's World: opens once Awakening Wood is reachable and the debt is paid.
+	if (playData->courseOpen(1) && (playData->isStoryFlag(STORY_DebtPaid)) && !playData->courseOpen(4)) {
+		playData->openCourse(4);
+	}
 	if (playData->courseOpen(1)) {
 		playData->setDemoFlag(DEMO_First_Globe_Day_End);
 		playData->setDemoFlag(DEMO_First_Cave_Return);

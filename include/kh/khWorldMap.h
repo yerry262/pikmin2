@@ -140,12 +140,13 @@ struct WorldMap : public Game::WorldMap::Base {
 	};
 
 	enum WorldMapCourseIndex {
-		COURSE_NULL      = -1, // Null/invalid course
-		COURSE_Tutorial  = 0,  // Valley of Repose
-		COURSE_Forest    = 1,  // Awakening Wood
-		COURSE_Yakushima = 2,  // Perplexing Pool
-		COURSE_Last      = 3,  // Wistful Wild
-		COURSE_COUNT,          // Total number of courses (4)
+		COURSE_NULL        = -1, // Null/invalid course
+		COURSE_Tutorial    = 0,  // Valley of Repose
+		COURSE_Forest      = 1,  // Awakening Wood
+		COURSE_Yakushima   = 2,  // Perplexing Pool
+		COURSE_Last        = 3,  // Wistful Wild
+		COURSE_JerrysWorld = 4,  // Jerry's World (mod)
+		COURSE_COUNT,            // Total number of courses (5)
 	};
 
 	/**
