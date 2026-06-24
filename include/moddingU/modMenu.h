@@ -13,7 +13,7 @@ enum ModSliderKind {
 	kModSlider_Int,        // edits an int*
 	kModSlider_Action,     // one-shot, calls action fn
 	kModSlider_TimeOfDay,  // live-synced elapsed seconds; A applies via TimeMgr::setTime
-	
+	kModSlider_Cycler,     // L/R cycles index 0..mMax (wraps); A triggers mAction
 };
 
 struct ModSlider {
@@ -32,6 +32,7 @@ struct ModSlider {
 	bool          mNoValue;          // suppress the value column entirely
 	bool          mOrangeIfMenuDirty; // label is orange when any menu item is modified, else white
 	int         (*mGetDisplayInt)(); // if non-null, action shows this value instead of On/Off
+	const char* (*mGetDisplayStr)(); // if non-null, action shows this string (takes priority over mGetDisplayInt)
 };
 
 struct ModMenu {
@@ -53,7 +54,7 @@ private:
 	void writeValue(ModSlider& s, f32 v);
 	bool isMenuDirty() const;
 
-	enum { kMaxSliders = 40 };
+	enum { kMaxSliders = 56 };
 	enum { kVisibleRows = 13 }; // rows drawn on-screen at a time; rest off-scroll
 
 	bool      mOpen;
@@ -61,6 +62,7 @@ private:
 	int       mCursor;
 	int       mSliderCount;
 	int       mHoldFrames;         // for analog-style repeat when holding L/R
+	int       mVerticalHoldFrames; // for accelerating cursor scroll on Up/Down
 	ModSlider mSliders[kMaxSliders];
 };
 
@@ -73,6 +75,13 @@ extern u32 gFieldCap;
 // Purple lift multiplier — replaces the hardcoded 10 in PikiMgr::getColorTransportScale.
 // Controls how many pikmin-worth one purple counts toward the minimum carry threshold.
 extern u32 gPurpleLiftScale;
+
+// When true, onBaseGameUpdate force-finishes any active cutscene every frame.
+extern bool gAutoSkipCutscenes;
+
+// When true, onBaseGameUpdate sets MVP_DoSkip every frame so the player can
+// skip any active cutscene with Start/A regardless of how it began.
+extern bool gCutscenesSkippable;
 
 // Install / tear down from BaseGameSection::init / exit
 void ensureCreated();

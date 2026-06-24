@@ -12,8 +12,12 @@
 #include "Game/NaviParms.h"
 #include "Game/EnemyBase.h"
 #include "Game/generalEnemyMgr.h"
+#include "Game/EnemyMgrBase.h"
+#include "Game/enemyInfo.h"
+#include "Game/MapMgr.h"
 #include "Game/GameSystem.h"
 #include "Game/gamePlayData.h"
+#include "Game/MoviePlayer.h"
 #include "Game/gameStages.h"
 #include "Game/gameStat.h"
 #include "Dolphin/rand.h"
@@ -33,6 +37,49 @@ static ModMenu sModMenuStorage;
 ModMenu* gModMenu = &sModMenuStorage;
 u32      gFieldCap = 100;
 u32      gPurpleLiftScale = 10;
+bool     gAutoSkipCutscenes  = false;
+bool     gCutscenesSkippable = false;
+
+// Boss-spawn cycler: each press of the "Spawn boss" action spawns the entry
+// at sBossCycleIdx, then advances the index (wrapping). The value column
+// shows the *next* boss to be spawned so the user can preview before pressing.
+struct BossEntry {
+	int         mTypeID;
+	const char* mShortName;
+};
+// "+5 pikmin" cycler: L/R picks color (or Random = 5 of each), A spawns at active captain.
+// Menu order: 0=Random, 1=Blue, 2=White, 3=Purple, 4=Yellow, 5=Red.
+static u32 sSpawnPikiKindIdx = 0;
+static const char* sSpawnPikiKindNames[] = { "Random", "Blue", "White", "Purple", "Yellow", "Red" };
+static const int sSpawnPikiKindCount = sizeof(sSpawnPikiKindNames) / sizeof(sSpawnPikiKindNames[0]);
+
+static const char* displaySpawnPikiKind()
+{
+	if (sSpawnPikiKindIdx >= (u32)sSpawnPikiKindCount) return "?";
+	return sSpawnPikiKindNames[sSpawnPikiKindIdx];
+}
+
+static const BossEntry sBossCycle[] = {
+	{ Game::EnemyTypeID::EnemyID_BlackMan,    "Wraith"  }, // Waterwraith
+	{ Game::EnemyTypeID::EnemyID_BigTreasure, "Titan"   }, // Titan Dweevil
+	{ Game::EnemyTypeID::EnemyID_KingChappy,  "Empblax" }, // Emperor Bulblax
+	{ Game::EnemyTypeID::EnemyID_SnakeWhole,  "PSnagrt" }, // Pileated Snagret
+	{ Game::EnemyTypeID::EnemyID_SnakeCrow,   "BSnagrt" }, // Burrowing Snagret
+	{ Game::EnemyTypeID::EnemyID_Damagumo,    "BLLegs"  }, // Beady Long Legs
+	{ Game::EnemyTypeID::EnemyID_UmiMushi,    "RBloyst" }, // Ranging Bloyster
+	{ Game::EnemyTypeID::EnemyID_Houdai,      "ManLegs" }, // Man-at-Legs
+	{ Game::EnemyTypeID::EnemyID_OoPanModoki, "GBread"  }, // Giant Breadbug
+	{ Game::EnemyTypeID::EnemyID_Queen,       "Empress" }, // Empress Bulblax
+	{ Game::EnemyTypeID::EnemyID_BigFoot,     "RLLegs"  }, // Raging Long Legs
+	{ Game::EnemyTypeID::EnemyID_DangoMushi,  "Crawbst" }, // Segmented Crawbster
+};
+static const int sBossCycleCount = sizeof(sBossCycle) / sizeof(sBossCycle[0]);
+static int       sBossCycleIdx   = 0;
+
+static const char* displayBossName()
+{
+	return sBossCycle[sBossCycleIdx].mShortName;
+}
 
 static void action_killAllEnemies();
 static void action_giveAllPikiFlower();
@@ -45,6 +92,12 @@ static void action_toggleNoclip();
 static void action_toggleFreezeDay();
 static void action_refillSprays();
 static void action_restoreDefaults();
+static void action_toggleAutoSkipCutscenes();
+static void action_toggleCutscenesSkippable();
+static void action_cycleSpawnBoss();
+static void action_unlockAllOnyons();
+static void action_discoverAllPikmin();
+static void action_markAllTreasures();
 
 // Returns how many real seconds have elapsed since the drop (day start).
 // Uses the same ratio TimeMgr::setTime uses: hours / 24 * dayLengthSeconds.
@@ -89,6 +142,41 @@ void onBaseGameUpdate(Controller* p1)
 	if (gModMenu) {
 		gModMenu->update(p1);
 	}
+
+	// Cutscene helpers — re-applied each frame so they survive across new
+	// cutscene starts (MoviePlayer::play() resets MVP_DoSkip to 0).
+	if (Game::moviePlayer && Game::moviePlayer->isFlag(Game::MVP_IsActive)) {
+		if (gCutscenesSkippable) {
+			Game::moviePlayer->setFlag(Game::MVP_DoSkip);
+		}
+		if (gAutoSkipCutscenes && Game::moviePlayer->mDemoState == Game::DEMOSTATE_Playing) {
+			Game::moviePlayer->skip();
+		}
+	}
+
+	// Captain HP sync. The Captain HP slider writes mMaxHealth (the parm), but
+	// Navi::mHealth (current HP) is set once at init from the parm and never
+	// re-syncs. That makes the gauge fraction (mHealth / mMaxHealth) shrink as
+	// the user raises the cap — looks "inverted." Detect when mMaxHealth has
+	// changed and resync each Navi's mHealth + the playData snapshot so the
+	// captain actually has the new HP and the bar shows it as full.
+	if (Game::naviMgr && Game::naviMgr->mNaviParms) {
+		static f32 sLastMaxHealth = -1.0f;
+		f32 cur = Game::naviMgr->mNaviParms->mNaviParms.mMaxHealth.mValue;
+		if (cur != sLastMaxHealth) {
+			sLastMaxHealth = cur;
+			for (int i = 0; i < Game::naviMgr->getMax(); ++i) {
+				if (!Game::naviMgr->getFlag(i)) {
+					Game::Navi* navi = Game::naviMgr->getAt(i);
+					if (navi) navi->mHealth = cur;
+				}
+			}
+			if (Game::playData) {
+				Game::playData->mNaviLifeMax[NAVIID_Olimar] = cur;
+				Game::playData->mNaviLifeMax[NAVIID_Louie]  = cur;
+			}
+		}
+	}
 }
 
 void onBaseGameDraw(Graphics& gfx)
@@ -104,6 +192,7 @@ ModMenu::ModMenu()
     , mCursor(0)
     , mSliderCount(0)
     , mHoldFrames(0)
+    , mVerticalHoldFrames(0)
 {
 	for (int i = 0; i < kMaxSliders; ++i) {
 		mSliders[i].mLabel        = "";
@@ -121,6 +210,7 @@ ModMenu::ModMenu()
 		mSliders[i].mNoValue           = false;
 		mSliders[i].mOrangeIfMenuDirty = false;
 		mSliders[i].mGetDisplayInt     = nullptr;
+		mSliders[i].mGetDisplayStr     = nullptr;
 	}
 }
 
@@ -174,6 +264,21 @@ void ModMenu::buildSliders()
 	ADD_PARM("Pikmin carry spd",  parms->mPikiParms.mRunSpeed,           10.0f,  500.0f, 10.0f);
 	ADD_PARM("Flower carry spd",  parms->mPikiParms.mFlowerRunSpeed,     10.0f,  500.0f, 10.0f);
 	ADD_PARM("Pikmin HP",         parms->mPikiParms.mHealth,              1.0f, 1000.0f, 10.0f);
+
+	// +5 pikmin cycler — D-pad L/R picks color (or Random), A spawns at active captain.
+	{
+		ModSlider& s = mSliders[mSliderCount++];
+		s.mLabel         = "+5 pikmin";
+		s.mKind          = kModSlider_Cycler;
+		s.mTarget        = &sSpawnPikiKindIdx;
+		s.mMin           = 0.0f;
+		s.mMax           = (f32)(sSpawnPikiKindCount - 1);
+		s.mStep          = 1.0f;
+		s.mAction        = &action_spawnFiveEach;
+		s.mGetDisplayStr = &displaySpawnPikiKind;
+		s.mPendingValue  = (f32)sSpawnPikiKindIdx;
+	}
+
 	ADD_PARM("Blue attack",       parms->mPikiParms.mBlueAttackDamage,    1.0f, 1000.0f,  5.0f);
 	ADD_PARM("Red attack",        parms->mPikiParms.mRedAttackDamage,     1.0f, 1000.0f,  5.0f);
 	ADD_PARM("Yellow attack",     parms->mPikiParms.mYellowAttackDamage,  1.0f, 1000.0f,  5.0f);
@@ -237,7 +342,9 @@ void ModMenu::buildSliders()
 		ADD_NAVI_PARM("Yellow throw ht",  np.mThrowHeightYellow,  10.0f,  200.0f,  5.0f);
 		ADD_NAVI_PARM("Purple throw ht",  np.mThrowBlackHeight,   10.0f,  200.0f,  5.0f);
 		ADD_NAVI_PARM("White throw ht",   np.mThrowWhiteHeight,   10.0f,  200.0f,  5.0f);
-		ADD_NAVI_PARM("Captain HP",       np.mMaxHealth,         10.0f, 1000.0f, 50.0f);
+		// Captain HP — slider writes mMaxHealth; onBaseGameUpdate then resyncs each
+		// Navi::mHealth and playData->mNaviLifeMax so the gauge fraction stays correct.
+		ADD_NAVI_PARM("Captain HP",       np.mMaxHealth,         10.0f, 1000.0f, 10.0f);
 		ADD_NAVI_PARM("Captain run spd",  np.mRunSpeed,          10.0f,  500.0f, 10.0f);
 
 #undef ADD_NAVI_PARM
@@ -272,6 +379,17 @@ void ModMenu::buildSliders()
 		s.mStep   = 5.0f;
 	}
 
+	// Day speed multiplier — TimeMgr::mSpeedFactor. 1.0 = normal, <1 slow, >1 fast.
+	if (Game::gameSystem && Game::gameSystem->mTimeMgr) {
+		ModSlider& s = mSliders[mSliderCount++];
+		s.mLabel  = "Day speed mult";
+		s.mKind   = kModSlider_Float;
+		s.mTarget = &Game::gameSystem->mTimeMgr->mSpeedFactor;
+		s.mMin    = 0.1f;
+		s.mMax    = 5.0f;
+		s.mStep   = 0.1f;
+	}
+
 	// Actions — each registered the same way.
 #define ADD_ACTION(label_, fn_)                                           \
 	do {                                                                  \
@@ -292,14 +410,22 @@ void ModMenu::buildSliders()
 	mSliders[mSliderCount - 1].mNoValue = true;
 	ADD_ACTION("Onyon -> Captain",      &action_onyonToCaptain);
 	mSliders[mSliderCount - 1].mNoValue = true;
-	ADD_ACTION("+5 each pik type",      &action_spawnFiveEach);
-	mSliders[mSliderCount - 1].mNoValue = true;
 	ADD_ACTION("+$1,000 Pokos",         &action_addPokos);
 	mSliders[mSliderCount - 1].mGreenLabel    = true;
 	mSliders[mSliderCount - 1].mGetDisplayInt = &displayPokoCount;
 	ADD_ACTION("Toggle noclip",         &action_toggleNoclip);
 	ADD_ACTION("Freeze day",            &action_toggleFreezeDay);
+	ADD_ACTION("Skip cutscenes",        &action_toggleAutoSkipCutscenes);
+	ADD_ACTION("Cutscenes skippable",   &action_toggleCutscenesSkippable);
 	ADD_ACTION("Refill sprays",         &action_refillSprays);
+	mSliders[mSliderCount - 1].mNoValue = true;
+	ADD_ACTION("Spawn boss",            &action_cycleSpawnBoss);
+	mSliders[mSliderCount - 1].mGetDisplayStr = &displayBossName;
+	ADD_ACTION("Unlock all onyons",     &action_unlockAllOnyons);
+	mSliders[mSliderCount - 1].mNoValue = true;
+	ADD_ACTION("Discover all piki",     &action_discoverAllPikmin);
+	mSliders[mSliderCount - 1].mNoValue = true;
+	ADD_ACTION("Mark all treasures",    &action_markAllTreasures);
 	mSliders[mSliderCount - 1].mNoValue = true;
 	ADD_ACTION("Restore defaults",      &action_restoreDefaults);
 	mSliders[mSliderCount - 1].mNoValue           = true;
@@ -370,6 +496,16 @@ void ModMenu::bumpCurrent(f32 direction)
 {
 	if (mSliderCount <= 0) return;
 	ModSlider& s = mSliders[mCursor];
+	if (s.mKind == kModSlider_Cycler) {
+		int n = (int)(s.mMax - s.mMin) + 1;
+		if (n <= 0) return;
+		int idx = (int)s.mPendingValue + (int)direction - (int)s.mMin;
+		idx %= n;
+		if (idx < 0) idx += n;
+		s.mPendingValue = (f32)(idx + (int)s.mMin);
+		if (s.mTarget) *reinterpret_cast<u32*>(s.mTarget) = (u32)s.mPendingValue;
+		return;
+	}
 	if (s.mKind != kModSlider_Float && s.mKind != kModSlider_Int && s.mKind != kModSlider_TimeOfDay) return;
 	f32 v = s.mPendingValue + direction * s.mStep;
 	if (v < s.mMin) v = s.mMin;
@@ -419,11 +555,29 @@ void ModMenu::update(Controller* pad)
 	}
 	if (mSliderCount == 0) return;
 
-	if (pad->isButtonDown(PAD_BUTTON_UP)) {
-		mCursor = (mCursor - 1 + mSliderCount) % mSliderCount;
-	}
-	if (pad->isButtonDown(PAD_BUTTON_DOWN)) {
-		mCursor = (mCursor + 1) % mSliderCount;
+	// Hold-to-scroll on Up/Down with acceleration. Fires once on press, pauses
+	// briefly to debounce taps, then auto-repeats — slow at first, then medium,
+	// then fast — so a long hold sweeps to the far end of the menu quickly.
+	bool upHeld   = (pad->getButton() & PAD_BUTTON_UP)   != 0;
+	bool downHeld = (pad->getButton() & PAD_BUTTON_DOWN) != 0;
+	if (upHeld || downHeld) {
+		int interval;
+		if (mVerticalHoldFrames < 16)      interval = 0; // initial press window
+		else if (mVerticalHoldFrames < 46) interval = 6; // slow
+		else if (mVerticalHoldFrames < 91) interval = 3; // medium
+		else                               interval = 1; // fast
+		bool fire = (mVerticalHoldFrames == 0)
+		         || (interval > 0 && (mVerticalHoldFrames % interval) == 0);
+		if (fire) {
+			if (upHeld) {
+				mCursor = (mCursor - 1 + mSliderCount) % mSliderCount;
+			} else {
+				mCursor = (mCursor + 1) % mSliderCount;
+			}
+		}
+		mVerticalHoldFrames++;
+	} else {
+		mVerticalHoldFrames = 0;
 	}
 
 	// Hold-to-repeat on left/right: fire immediately on press, then every 4 frames while held.
@@ -443,6 +597,8 @@ void ModMenu::update(Controller* pad)
 		if (cur.mKind == kModSlider_Action) {
 			if (cur.mAction) cur.mAction();
 			if (!cur.mNoValue) cur.mEnabled = !cur.mEnabled;
+		} else if (cur.mKind == kModSlider_Cycler) {
+			if (cur.mAction) cur.mAction();
 		} else if ((cur.mKind == kModSlider_Float || cur.mKind == kModSlider_Int) && cur.mTarget) {
 			writeValue(cur, cur.mPendingValue);
 			cur.mDirty = (cur.mPendingValue != cur.mOriginal);
@@ -639,15 +795,15 @@ void ModMenu::draw(Graphics& gfx)
 	print.setGradColor(JUtility::TColor(180, 220, 255, 255));
 
 	const f32 x    = 120.0f;
-	f32       y    = 26.0f; // a bit lower than before to give the big title headroom
+	f32       y    = 32.0f; // a bit lower than before to give the big title headroom
 	const f32 dy   = 18.0f;
-	const f32 titleGap = dy * 2.0f; // extra room because the title is rendered larger
+	const f32 titleGap = dy * 1.1f; // tight: title-to-first-row spacing tuned by user feedback
 
-	// Default font metrics + 1.5x size for the title line.
+	// Default font metrics + 2.25x size for the title line.
 	const f32 baseFontW = JFWSystem::systemFont->getWidth();
 	const f32 baseFontH = JFWSystem::systemFont->getHeight();
-	const f32 bigFontW  = baseFontW * 1.5f;
-	const f32 bigFontH  = baseFontH * 1.5f;
+	const f32 bigFontW  = baseFontW * 2.25f;
+	const f32 bigFontH  = baseFontH * 2.25f;
 
 	// Measure widths so we can position the bottom controls row.
 	const f32 iconSize   = 16.0f;
@@ -681,7 +837,7 @@ void ModMenu::draw(Graphics& gfx)
 	for (int j = 0; j < mSliderCount; ++j) {
 		if (mSliders[j].mKind == kModSlider_Action) { firstActionIdx = j; break; }
 	}
-	int contentRows = (last - first) + 2; // sliders + footer + controls row
+	int contentRows = (last - first) + 3; // sliders + (N/M) + gap + controls row
 	if (first == 0 && mSliderCount > 0) contentRows++; // "Main Variable Mods" header
 	if (firstActionIdx >= 0 && first <= firstActionIdx && firstActionIdx < last) contentRows++;
 
@@ -782,8 +938,12 @@ void ModMenu::draw(Graphics& gfx)
 				print.print(valueX, y, "%7d", (int)s.mPendingValue);
 			} else if (s.mKind == kModSlider_TimeOfDay) {
 				print.print(valueX, y, "%5ds", (int)s.mPendingValue);
+			} else if (s.mKind == kModSlider_Cycler) {
+				if (s.mGetDisplayStr) print.print(valueX, y, "%7s", s.mGetDisplayStr());
 			} else if (s.mKind == kModSlider_Action) {
-				if (s.mGetDisplayInt) {
+				if (s.mGetDisplayStr) {
+					print.print(valueX, y, "%7s", s.mGetDisplayStr());
+				} else if (s.mGetDisplayInt) {
 					print.print(valueX, y, "%7d", s.mGetDisplayInt());
 				} else {
 					print.print(valueX, y, "%7s", s.mEnabled ? "On" : "Off");
@@ -793,12 +953,18 @@ void ModMenu::draw(Graphics& gfx)
 		y += dy;
 	}
 
-	// Fixed footer: always below the last visible row, never scrolls.
+	// Fixed footer line 1: cursor indicator (N/M).
 	print.setCharColor(JUtility::TColor(80, 160, 255, 255));
 	print.print(x, y, "(%d/%d)", mCursor + 1, mSliderCount);
 	y += dy;
 
-	// === Bottom controls row: [L]+[R]+[Z] close, [A] select ===
+	// Blank gap row to visually separate the footer controls from the menu content.
+	y += dy;
+
+	// === Footer line 2: [L]+[R]+[Z] close, [A] select  (icons + text on the same row) ===
+	// Baseline: icons at exact same y as text. Adjust this offset based on what
+	// the user actually sees in-game (icon-to-text alignment via mOrthoGraph
+	// vs J2DPrint may need a constant nudge).
 	const f32 ctrlIconY = y - 15.0f;
 	drawBtnIcon(gfx, lx, ctrlIconY, iconSize, 6); // L
 	drawBtnIcon(gfx, rx, ctrlIconY, iconSize, 7); // R
@@ -915,21 +1081,31 @@ static void action_spawnFiveEach()
 {
 	if (!Game::pikiMgr || !Game::naviMgr) return;
 
-	Game::Navi* navi = nullptr;
-	for (int i = 0; i < Game::naviMgr->getMax(); ++i) {
-		if (!Game::naviMgr->getFlag(i)) {
-			navi = Game::naviMgr->getAt(i);
-			break;
-		}
-	}
+	Game::Navi* navi = Game::naviMgr->getActiveNavi();
 	if (!navi) return;
 
 	Vector3f spawnPos = navi->getPosition();
-	int spawned     = 0;
-	bool poolFull   = false;
+	int spawned   = 0;
+	bool poolFull = false;
 
-	// Loop over the 5 storable types: Blue, Red, Yellow, Purple, White.
-	for (int color = 0; color < (int)Game::StoredPikiCount && !poolFull; ++color) {
+	// Menu idx → engine PikiColor (Blue=0, Red=1, Yellow=2, Purple=3, White=4).
+	// idx 0 = Random/each (handled separately).
+	static const int kIdxToColor[]
+	    = { -1, Game::Blue, Game::White, Game::Purple, Game::Yellow, Game::Red };
+	const int kIdxToColorN = sizeof(kIdxToColor) / sizeof(kIdxToColor[0]);
+
+	int firstColor, lastColor;
+	if (sSpawnPikiKindIdx == 0) {
+		// Random: spawn 5 of each storable color.
+		firstColor = 0;
+		lastColor  = (int)Game::StoredPikiCount - 1;
+	} else if ((int)sSpawnPikiKindIdx < kIdxToColorN) {
+		firstColor = lastColor = kIdxToColor[sSpawnPikiKindIdx];
+	} else {
+		return;
+	}
+
+	for (int color = firstColor; color <= lastColor && !poolFull; ++color) {
 		for (int n = 0; n < 5 && !poolFull; ++n) {
 			if ((int)Game::GameStat::alivePikis >= (int)gFieldCap) { poolFull = true; break; }
 
@@ -951,7 +1127,8 @@ static void action_spawnFiveEach()
 			++spawned;
 		}
 	}
-	OSReport("[MOD] +5 each: spawned %d pikmin\n", spawned);
+	OSReport("[MOD] +5 spawn (%s): %d pikmin at active captain\n",
+	         sSpawnPikiKindNames[sSpawnPikiKindIdx], spawned);
 }
 
 static void action_addPokos()
@@ -985,6 +1162,98 @@ static void action_toggleFreezeDay()
 		Game::gameSystem->setFlag(Game::GAMESYS_DisablePause);
 		OSReport("[MOD] day clock FROZEN\n");
 	}
+}
+
+static void action_toggleAutoSkipCutscenes()
+{
+	gAutoSkipCutscenes = !gAutoSkipCutscenes;
+	OSReport("[MOD] auto-skip cutscenes %s\n", gAutoSkipCutscenes ? "ON" : "OFF");
+}
+
+static void action_toggleCutscenesSkippable()
+{
+	gCutscenesSkippable = !gCutscenesSkippable;
+	OSReport("[MOD] cutscenes skippable %s\n", gCutscenesSkippable ? "ON" : "OFF");
+}
+
+static void action_cycleSpawnBoss()
+{
+	if (!Game::generalEnemyMgr || !Game::naviMgr) {
+		OSReport("[MOD] spawn-boss: generalEnemyMgr or naviMgr null\n");
+		return;
+	}
+	Game::Navi* active = Game::naviMgr->getActiveNavi();
+	if (!active) {
+		OSReport("[MOD] spawn-boss: no active navi\n");
+		return;
+	}
+
+	const BossEntry& entry = sBossCycle[sBossCycleIdx];
+
+	// Spawn at the whistle (throw cursor) so it lands where the captain is aiming.
+	// Floor-snap so the boss doesn't fall through or float in the air.
+	Game::EnemyBirthArg arg;
+	arg.mPosition = active->mWhistle ? active->mWhistle->getPosition()
+	                                 : active->getPosition();
+	if (Game::mapMgr) {
+		arg.mPosition.y = Game::mapMgr->getMinY(arg.mPosition);
+	}
+	arg.mFaceDir = 0.0f;
+
+	// generalEnemyMgr->birth() returns null if the per-type EnemyMgr isn't loaded
+	// for the current cave. To make the cycler still feel responsive, walk forward
+	// through the boss list until we find one that *is* loaded for this stage.
+	Game::EnemyBase* spawned = nullptr;
+	int triedName = sBossCycleIdx;
+	for (int tries = 0; tries < sBossCycleCount; ++tries) {
+		const BossEntry& e = sBossCycle[(sBossCycleIdx + tries) % sBossCycleCount];
+		spawned = Game::generalEnemyMgr->birth(e.mTypeID, arg);
+		if (spawned) {
+			spawned->init(nullptr);
+			OSReport("[MOD] spawned %s (id %d) at whistle (%.1f, %.1f, %.1f)\n",
+			         e.mShortName, e.mTypeID,
+			         arg.mPosition.x, arg.mPosition.y, arg.mPosition.z);
+			triedName = (sBossCycleIdx + tries) % sBossCycleCount;
+			break;
+		}
+	}
+	if (!spawned) {
+		OSReport("[MOD] spawn-boss: no boss in sBossCycle is loaded for the current stage\n");
+	}
+
+	sBossCycleIdx = (triedName + 1) % sBossCycleCount;
+}
+
+static void action_unlockAllOnyons()
+{
+	if (!Game::playData) return;
+	// Five colors: Blue=0, Red=1, Yellow=2, Purple=3, White=4 (NaviContainerFlag bits).
+	for (int color = 0; color < 5; ++color) {
+		Game::playData->setContainer(color);
+	}
+	// Boot onions (Red/Blue/Yellow only — Purple/White stay cave-only).
+	Game::playData->setBootContainer(0);
+	Game::playData->setBootContainer(1);
+	Game::playData->setBootContainer(2);
+	OSReport("[MOD] all onyons unlocked\n");
+}
+
+static void action_discoverAllPikmin()
+{
+	if (!Game::playData) return;
+	for (int color = 0; color < 5; ++color) {
+		Game::playData->setMeetPikmin(color);
+	}
+	OSReport("[MOD] all pikmin colors discovered\n");
+}
+
+static void action_markAllTreasures()
+{
+	if (!Game::playData) return;
+	// Flips the high-level story flag the ending uses; doesn't itself add the
+	// treasures to the hoard, but it tells the game the player has them.
+	Game::playData->setStoryFlag(Game::STORY_AllTreasuresCollected);
+	OSReport("[MOD] STORY_AllTreasuresCollected set\n");
 }
 
 static void action_refillSprays()
