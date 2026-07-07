@@ -34,40 +34,47 @@ Default = actual runtime value loaded from the game's parm files (what "Restore 
 | 2 | Pikmin carry spd | slider | 10 | 120 | 500 |
 | 3 | Flower carry spd | slider | 10 | 170 | 500 |
 | 4 | Pikmin HP | slider | 1 | 100 | 1000 |
-| 5 | Blue attack | slider | 1 | 10 | 1000 |
-| 6 | Red attack | slider | 1 | 15 | 1000 |
-| 7 | Yellow attack | slider | 1 | 10 | 1000 |
-| 8 | Purple attack | slider | 1 | 20 | 30 |
-| 9 | White attack | slider | 1 | 10 | 30 |
-| 10 | Enemy search rng | slider | 1 | 70 | 1000 |
-| 11 | Pellet search rng | slider | 1 | 55 | 1000 |
-| 12 | Bomb throw max | slider | 1 | 160 | 1000 |
-| 13 | Purple pound dmg | slider | 0 | 20 | 1000 |
-| 14 | Purple carry spd mult | slider | 0.1 | 0.6 | 5 |
-| 15 | Purple lift mult | slider | 1 | 10 | 20 |
-| 16 | Spicy duration | slider | 5 | 40 | 200 |
-| 17 | Spicy run speed | slider | 50 | 190 | 220 |
-| 18 | Whistle radius | slider | 10 | 90 | 500 |
-| 19 | Throw dist max | slider | 10 | 130 | 1000 |
-| 20 | Red/Blue throw ht | slider | 10 | 75 | 200 |
-| 21 | Yellow throw ht | slider | 10 | 115 | 200 |
-| 22 | Purple throw ht | slider | 10 | 30 | 200 |
-| 23 | White throw ht | slider | 10 | 75 | 200 |
-| 24 | Captain HP | slider | 10 | 50 | 1000 |
-| 25 | Captain run spd | slider | 10 | 160 | 500 |
-| 26 | Max on field | slider | 1 | 100 | 100 |
-| 27 | Time of day | slider | 0s | live | 780s |
-| 28 | Kill all enemies | action | | | |
-| 29 | All piki → flower | action | | | |
-| 30 | Kill all pikmin | action | | | |
-| 31 | All piki → onyon | action | | | |
-| 32 | Onyon → Captain | action | | | |
-| 33 | +5 each pik type | action | | | |
-| 34 | +$1,000 Pokos | action | | | |
-| 35 | Toggle noclip | action | | | |
-| 36 | Freeze day | action | | | |
-| 37 | Refill sprays | action | | | |
-| 38 | Restore defaults | action | | | |
+| 5 | +5 pikmin | action (cycler — Random / Blue / White / Purple / Yellow / Red; spawns at active captain) | | | |
+| 6 | Blue attack | slider | 1 | 10 | 1000 |
+| 7 | Red attack | slider | 1 | 15 | 1000 |
+| 8 | Yellow attack | slider | 1 | 10 | 1000 |
+| 9 | Purple attack | slider | 1 | 20 | 30 |
+| 10 | White attack | slider | 1 | 10 | 30 |
+| 11 | Enemy search rng | slider | 1 | 70 | 1000 |
+| 12 | Pellet search rng | slider | 1 | 55 | 1000 |
+| 13 | Bomb throw max | slider | 1 | 160 | 1000 |
+| 14 | Purple pound dmg | slider | 0 | 20 | 1000 |
+| 15 | Purple carry spd mult | slider | 0.1 | 0.6 | 5 |
+| 16 | Purple lift mult | slider | 1 | 10 | 20 |
+| 17 | Spicy duration | slider | 5 | 40 | 200 |
+| 18 | Spicy run speed | slider | 50 | 190 | 220 |
+| 19 | Whistle radius | slider | 10 | 90 | 500 |
+| 20 | Throw dist max | slider | 10 | 130 | 1000 |
+| 21 | Red/Blue throw ht | slider | 10 | 75 | 200 |
+| 22 | Yellow throw ht | slider | 10 | 115 | 200 |
+| 23 | Purple throw ht | slider | 10 | 30 | 200 |
+| 24 | White throw ht | slider | 10 | 75 | 200 |
+| 25 | Captain HP | slider | 10 | 100 | 1000 |
+| 26 | Captain run spd | slider | 10 | 160 | 500 |
+| 27 | Max on field | slider | 1 | 100 | 100 |
+| 28 | Time of day | slider | 0s | live | 780s |
+| 29 | Day speed mult | slider | 0.1 | 1.0 | 5.0 |
+| 30 | Kill all enemies | action | | | |
+| 31 | All piki → flower | action | | | |
+| 32 | Kill all pikmin | action | | | |
+| 33 | All piki → onyon | action | | | |
+| 34 | Onyon → Captain | action | | | |
+| 35 | +$1,000 Pokos | action | | | |
+| 36 | Toggle noclip | action | | | |
+| 37 | Freeze day | action | | | |
+| 38 | Skip cutscenes | action | | | |
+| 39 | Cutscenes skippable | action | | | |
+| 40 | Refill sprays | action | | | |
+| 41 | Spawn boss | action (cycler — Wraith / Titan / Empblax / PSnagrt / BSnagrt / BLLegs / RBloyst / ManLegs / GBread / Empress / RLLegs / Crawbst) | | | |
+| 42 | Unlock all onyons | action | | | |
+| 43 | Discover all piki | action | | | |
+| 44 | Mark all treasures | action | | | |
+| 45 | Restore defaults | action | | | |
 
 ---
 
